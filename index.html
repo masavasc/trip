@@ -1,125 +1,87 @@
-<!DOCTYPE html>
-<html lang="ja">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>２０２５京都旅行　旅のしおり</title>
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
-    import { getFirestore, collection, addDoc, onSnapshot, query, orderBy } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
+<!-- ここにモーダルHTML挿入 -->
+<div id="modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); justify-content:center; align-items:center; z-index:1000;">
+  <div style="background:#fff; padding:1em; border-radius:8px; max-width:400px; width:90%;">
+    <h3>訪問先の編集</h3>
+    <input id="modalPlace" placeholder="訪問先名">
+    <textarea id="modalComment" placeholder="コメント"></textarea>
+    <input id="modalURL" placeholder="URL（任意）">
+    <button id="saveModal">保存</button>
+    <button onclick="document.getElementById('modal').style.display='none';">キャンセル</button>
+  </div>
+</div>
 
-    const firebaseConfig = {
-      apiKey: "AIzaSyD0LzT1F1ic5ckZVGTOzr27S8nMQwd0P6U",
-      authDomain: "kyoto-trip-faec7.firebaseapp.com",
-      projectId: "kyoto-trip-faec7",
-      storageBucket: "kyoto-trip-faec7.appspot.com",
-      messagingSenderId: "415949031642",
-      appId: "1:415949031642:web:31e816026649521699fde3"
-    };
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
+  import { getFirestore, collection, addDoc, deleteDoc, doc, onSnapshot, query, orderBy, getDocs } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
 
-    const app = initializeApp(firebaseConfig);
-    const db = getFirestore(app);
-    const form = document.getElementById('visitForm');
+  const firebaseConfig = {
+    apiKey: "AIzaSyD0LzT1F1ic5ckZVGTOzr27S8nMQwd0P6U",
+    authDomain: "kyoto-trip-faec7.firebaseapp.com",
+    projectId: "kyoto-trip-faec7",
+    storageBucket: "kyoto-trip-faec7.appspot.com",
+    messagingSenderId: "415949031642",
+    appId: "1:415949031642:web:31e816026649521699fde3"
+  };
 
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const date = document.getElementById('visitDate').value;
-      const time = document.getElementById('visitTime').value;
-      const place = document.getElementById('visitPlace').value;
-      const comment = document.getElementById('visitComment').value;
-      const url = document.getElementById('visitURL').value;
-      const datetime = `${date} ${time}`;
-      await addDoc(collection(db, "visits"), { datetime, date, time, place, comment, url, timestamp: new Date() });
-      form.reset();
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+  let currentSlot = '', currentCell = null;
+
+  document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('td[data-slot]').forEach(cell => {
+      cell.addEventListener('click', () => {
+        currentSlot = cell.getAttribute('data-slot');
+        currentCell = cell;
+        document.getElementById('modalPlace').value = '';
+        document.getElementById('modalComment').value = '';
+        document.getElementById('modalURL').value = '';
+        document.getElementById('modal').style.display = 'flex';
+      });
     });
 
-    function updateSchedule(item) {
-      const slot = `${item.date} ${item.time}`;
-      const cells = document.querySelectorAll(`#scheduleTable td[data-slot='${slot}']`);
-      cells.forEach(cell => {
-        if (!cell.dataset.entries) {
-          cell.dataset.entries = JSON.stringify([]);
-        }
-        const currentEntries = JSON.parse(cell.dataset.entries);
-        currentEntries.push({ place: item.place, comment: item.comment, url: item.url });
-        cell.dataset.entries = JSON.stringify(currentEntries);
-        cell.innerHTML = currentEntries.map(entry => `
-          <div>${entry.place}<br>${entry.comment}<br>${entry.url ? `<a href='${entry.url}' target='_blank'>リンク</a>` : ''}</div>
-        `).join('');
-      });
-    }
+    document.getElementById('saveModal').addEventListener('click', async () => {
+      const place = document.getElementById('modalPlace').value;
+      const comment = document.getElementById('modalComment').value;
+      const url = document.getElementById('modalURL').value;
+      const [date, time] = currentSlot.split(' ');
+
+      const q = query(collection(db, "visits"), orderBy("timestamp"));
+      const snapshot = await getDocs(q);
+      const sameSlotDocs = snapshot.docs.filter(doc => doc.data().datetime === currentSlot);
+
+      if (sameSlotDocs.length >= 3) {
+        await deleteDoc(doc(db, "visits", sameSlotDocs[0].id));
+      }
+
+      await addDoc(collection(db, "visits"), { datetime: currentSlot, date, time, place, comment, url, timestamp: new Date() });
+      document.getElementById('modal').style.display = 'none';
+    });
 
     const q = query(collection(db, "visits"), orderBy("timestamp"));
     onSnapshot(q, (snapshot) => {
-      const seen = new Set();
+      const grouped = {};
       snapshot.forEach(doc => {
-        const item = doc.data();
-        const key = `${item.date}-${item.time}-${item.place}`;
-        if (!seen.has(key)) {
-          updateSchedule(item);
-          seen.add(key);
-        }
+        const data = doc.data();
+        if (!grouped[data.datetime]) grouped[data.datetime] = [];
+        grouped[data.datetime].push({ ...data, id: doc.id });
+      });
+
+      document.querySelectorAll('td[data-slot]').forEach(cell => {
+        const slot = cell.getAttribute('data-slot');
+        const entries = grouped[slot] || [];
+        cell.innerHTML = entries.map(e => `
+          <div>
+            ${e.place}<br>${e.comment}<br>${e.url ? `<a href='${e.url}' target='_blank'>リンク</a>` : ''}
+            <button onclick="deleteEntry('${e.id}')">❌</button>
+          </div>
+        `).join('');
       });
     });
-  </script>
-  <style>
-    body { font-family: sans-serif; font-size: 0.95em; padding: 1em; background: #eef6fa; }
-    h1, h2 { text-align: center; color: #2c3e50; }
-    h1 { font-size: 1.5em; margin-bottom: 0; }
-    .subtitle { text-align: center; font-size: 1em; color: #555; margin-top: 0; }
-    .section { background: #ffffff; padding: 1em; margin: 1em 0; border-radius: 12px; box-shadow: 0 2px 6px rgba(0,0,0,0.05); font-size: 0.9em; }
-    .time-label { font-weight: bold; color: #006699; }
-    a { color: #0077cc; text-decoration: none; }
-    input, select, textarea, button { display: block; width: 100%; margin: 0.5em 0; font-size: 1em; padding: 0.6em; border-radius: 6px; border: 1px solid #ccc; }
-    table { width: 100%; border-collapse: collapse; font-size: 0.9em; background: #ffffff; }
-    th, td { padding: 0.75em; text-align: left; border-bottom: 1px solid #ccc; }
-    th { background-color: #dbeefc; }
-  </style>
-</head>
-<body>
-  <h1>２０２５京都旅行旅のしおり</h1>
-  <p class="subtitle">2025年7月18日（金）〜 20日（日）</p>
+  });
 
-  <div class="section">
-    <h2>🚄 行程一覧</h2>
-    <table id="scheduleTable">
-      <tr><th>日付</th><th>時間</th><th>内容</th><th>宿泊・交通</th></tr>
-      <tr><td rowspan="2">7/18（金）</td><td>15:25<br>17:39</td><td data-slot="7/18 午後">のぞみ409号（品川→京都）</td><td>ー</td></tr>
-      <tr><td>夕食</td><td data-slot="7/18 夕食">未定</td><td>ノク京都ホテル</td></tr>
-      <tr><td rowspan="5">7/19（土）</td><td>朝食</td><td data-slot="7/19 朝食">未定</td><td rowspan="5">ー</td></tr>
-      <tr><td>午前</td><td data-slot="7/19 午前">未定</td></tr>
-      <tr><td>昼食</td><td data-slot="7/19 昼食">未定</td></tr>
-      <tr><td>午後</td><td data-slot="7/19 午後">未定</td></tr>
-      <tr><td>夕食</td><td data-slot="7/19 夕食">未定</td></tr>
-      <tr><td rowspan="4">7/20（日）</td><td>朝食</td><td data-slot="7/20 朝食">未定</td><td rowspan="4">ー</td></tr>
-      <tr><td>午前</td><td data-slot="7/20 午前">未定</td></tr>
-      <tr><td>昼食</td><td data-slot="7/20 昼食">未定</td></tr>
-      <tr><td>午後</td><td data-slot="7/20 午後">のぞみ160号（京都→品川）</td></tr>
-    </table>
-  </div>
-
-  <div class="section">
-    <h2>📝 訪問先の追加</h2>
-    <form id="visitForm">
-      <label for="visitDate">訪問日：</label>
-      <select id="visitDate" required>
-        <option value="7/18">7月18日（金）</option>
-        <option value="7/19">7月19日（土）</option>
-        <option value="7/20">7月20日（日）</option>
-      </select>
-      <label for="visitTime">訪問時間：</label>
-      <select id="visitTime" required>
-        <option value="朝食">朝食</option>
-        <option value="午前">午前</option>
-        <option value="昼食">昼食</option>
-        <option value="午後">午後</option>
-        <option value="夕食">夕食</option>
-      </select>
-      <input type="text" id="visitPlace" placeholder="訪問先名" required>
-      <textarea id="visitComment" placeholder="コメント"></textarea>
-      <input type="url" id="visitURL" placeholder="URL（任意）">
-      <button type="submit">📌 登録する</button>
-    </form>
-  </div>
-</body>
-</html>
+  window.deleteEntry = async function(id) {
+    if (confirm("この予定を削除しますか？")) {
+      await deleteDoc(doc(db, "visits", id));
+    }
+  }
+</script>
