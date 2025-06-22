@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>２０２５京都旅行旅のしおり</title>
+  <style>
+    body { font-family: sans-serif; font-size: 0.95em; padding: 1em; background: #eef6fa; }
+    h1, h2 { text-align: center; color: #2c3e50; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.9em; background: #fff; }
+    th, td { padding: 0.6em; border-bottom: 1px solid #ccc; }
+    th { background-color: #dbeefc; }
+    td[data-slot] { cursor: pointer; }
+    .now-indicator { color: red; font-weight: bold; margin-right: 0.5em; }
+    @keyframes blink { 50% { opacity: 0; } }
+    #modal { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.4); z-index:1000; justify-content:center; align-items:center; }
+    #modalBox { background:white; padding:1em; border-radius:8px; width:90%; max-width:400px; }
+    input, textarea { width: 100%; margin: 0.5em 0; padding: 0.5em; font-size: 1em; }
+    button { margin-right: 0.5em; }
+  </style>
+</head>
+<body>
+  <h1>２０２５京都旅行 旅のしおり</h1>
+  <p style="text-align:center;">2025年7月18日（金）〜 20日（日）</p>
+
+  <table id="scheduleTable">
+    <tr><th>日付</th><th>時間</th><th>内容</th><th>宿泊・交通</th></tr>
+    <tr><td rowspan="2">7/18（金）</td><td>15:25<br>17:39</td><td data-slot="7/18 午後">のぞみ409号（品川→京都）<br>11号車 12・13番 A,B</td><td>ー</td></tr>
+    <tr><td>夕食</td><td data-slot="7/18 夕食">未定</td><td>ノク京都ホテル<br>TEL: 075-254-2550<br><a href="https://www.nokkyoto.com/" target="_blank">公式サイト</a></td></tr>
+    <tr><td rowspan="5">7/19（土）</td><td>朝食</td><td data-slot="7/19 朝食">ホテル内</td><td rowspan="5">ー</td></tr>
+    <tr><td>午前</td><td data-slot="7/19 午前">未定</td></tr>
+    <tr><td>昼食</td><td data-slot="7/19 昼食">未定</td></tr>
+    <tr><td>午後</td><td data-slot="7/19 午後">未定</td></tr>
+    <tr><td>夕食</td><td data-slot="7/19 夕食">未定</td></tr>
+    <tr><td rowspan="4">7/20（日）</td><td>朝食</td><td data-slot="7/20 朝食">ホテル内</td><td rowspan="4">ー</td></tr>
+    <tr><td>午前</td><td data-slot="7/20 午前">未定</td></tr>
+    <tr><td>昼食</td><td data-slot="7/20 昼食">未定（京都駅周辺）</td></tr>
+    <tr><td>15:54<br>18:09</td><td data-slot="7/20 午後">のぞみ160号（京都→品川）<br>11号車 9番 D,E・13番 A,B</td></tr>
+  </table>
+
+  <div id="modal">
+    <div id="modalBox">
+      <h3>訪問先の編集</h3>
+      <input type="text" id="modalPlace" placeholder="訪問先名">
+      <textarea id="modalComment" placeholder="コメント"></textarea>
+      <input type="url" id="modalURL" placeholder="URL">
+      <button onclick="saveModal()">保存</button>
+      <button onclick="closeModal()">キャンセル</button>
+    </div>
+  </div>
+
+  <script>
+    let activeSlot = '';
+    function openModal(slot, cell) {
+      activeSlot = slot;
+      const entries = JSON.parse(cell.dataset.entries || '[]');
+      const entry = entries[0] || { place: '', comment: '', url: '' };
+      document.getElementById('modalPlace').value = entry.place;
+      document.getElementById('modalComment').value = entry.comment;
+      document.getElementById('modalURL').value = entry.url;
+      document.getElementById('modal').style.display = 'flex';
+    }
+
+    function closeModal() {
+      document.getElementById('modal').style.display = 'none';
+    }
+
+    function saveModal() {
+      const place = document.getElementById('modalPlace').value;
+      const comment = document.getElementById('modalComment').value;
+      const url = document.getElementById('modalURL').value;
+      const cell = document.querySelector(`td[data-slot='${activeSlot}']`);
+      const entry = { place, comment, url };
+      cell.dataset.entries = JSON.stringify([entry]);
+      cell.innerHTML = `${place}<br>${comment}<br>${url ? `<a href='${url}' target='_blank'>リンク</a>` : ''}`;
+      closeModal();
+    }
+
+    document.querySelectorAll('td[data-slot]').forEach(cell => {
+      const slot = cell.getAttribute('data-slot');
+      cell.addEventListener('click', () => openModal(slot, cell));
+    });
+
+    function highlightCurrentTime() {
+      const now = new Date();
+      const hour = now.getHours();
+      const today = now.toISOString().slice(5, 10).replace('-', '/');
+      const slotMap = { '朝食': 8, '午前': 10, '昼食': 12, '午後': 14, '夕食': 18 };
+      document.querySelectorAll('td[data-slot]').forEach(cell => {
+        const slot = cell.getAttribute('data-slot');
+        const [date, time] = slot.split(' ');
+        if (date === today && slotMap[time]) {
+          if (Math.abs(hour - slotMap[time]) < 1) {
+            cell.innerHTML = `⏬<br>` + cell.innerHTML;
+            cell.style.backgroundColor = '#ffe5e5';
+          }
+        }
+      });
+    }
+    highlightCurrentTime();
+  </script>
+</body>
+</html>
